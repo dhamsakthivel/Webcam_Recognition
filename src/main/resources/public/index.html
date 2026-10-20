@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fruit Vision · local camera classifier</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">PRIVATE · LOCAL · EXPERIMENTAL</p><h1>Fruit Vision</h1><p>Teach this local classifier to recognize the produce in your camera.</p></header>
+    <section class="camera-card">
+      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="frame" hidden></canvas><div id="cameraState">Camera is off</div></div>
+      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Identify produce</button></div>
+      <div id="result" role="status">Add examples, then scan an item.</div>
+      <p class="hint">For a useful result, fill most of the frame with one item under consistent light.</p>
+    </section>
+    <section class="teach">
+      <div><p class="eyebrow">BUILD YOUR LOCAL MODEL</p><h2>Teach a fruit or vegetable</h2><p>Enter a name and save 8–15 camera views: front, side, slightly closer, and in normal room lighting. Samples remain in <code>data/produce-samples.tsv</code> on this computer.</p></div>
+      <form id="teachForm"><label for="label">Produce name</label><div class="form-row"><input id="label" maxlength="40" placeholder="e.g. red apple" required><button disabled id="addSample">Save camera view</button></div><p id="sampleNotice" class="hint"></p></form>
+    </section>
+    <section><div class="section-heading"><div><p class="eyebrow">CURRENT MODEL</p><h2>Your labels</h2></div><span id="modelCount"></span></div><div id="labels" class="labels"><p class="hint">No labels yet. Teach the model using the camera above.</p></div></section>
+    <aside><strong>Accuracy note:</strong> This lightweight color-and-shape prototype accepts a prediction only at 70% confidence or higher. That is a confidence threshold, not a guaranteed 70% accuracy—real accuracy depends on varied, representative samples and lighting.</aside>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
