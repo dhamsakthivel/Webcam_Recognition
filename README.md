@@ -38,13 +38,18 @@ the UI to remove its saved samples.
 
 ## Focused scanning and reference captures
 
-While the camera is active, Fruit Vision blurs the area outside its central
-scan guide. Classification extracts the feature only from that guided region,
-which reduces the influence of a holder or background. Saving a camera view
-also writes the focused PNG locally under `data/reference-images/` so it can
-be reviewed as a reference. This is center-guided masking rather than semantic
-person/background segmentation: place a single produce item in the guide for
-the intended effect.
+While the camera is active, Fruit Vision loads MediaPipe's self-segmentation
+model and excludes detected person pixels from the central scan guide;
+everything outside the accepted foreground is blurred. Classification extracts
+the feature only from that guide, which reduces the influence of a holder or
+background. Saving a camera view also writes the focused PNG locally under
+`data/reference-images/` so it can be reviewed as a reference.
+
+The MediaPipe runtime and model load from jsDelivr and Google Cloud Storage the
+first time camera scanning is enabled. If they cannot be reached, the app
+continues with its center-guided blur fallback. Selfie segmentation identifies
+people rather than produce, so place one produce item prominently inside the
+guide; it is not a general-purpose produce-instance segmentation model.
 
 ## Starter examples
 

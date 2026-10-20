@@ -3,6 +3,8 @@ const canvas = document.querySelector("#frame");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 const processedFrame = document.querySelector("#processedFrame");
 const processedCtx = processedFrame.getContext("2d");
+const foregroundCanvas = document.createElement("canvas");
+const foregroundCtx = foregroundCanvas.getContext("2d");
 const startButton = document.querySelector("#startCamera");
 const classifyButton = document.querySelector("#classify");
 const addButton = document.querySelector("#addSample");
@@ -11,7 +13,12 @@ const labelsEl = document.querySelector("#labels");
 const countEl = document.querySelector("#modelCount");
 const notice = document.querySelector("#sampleNotice");
 const datasetNotice = document.querySelector("#datasetNotice");
+const segmentationNotice = document.querySelector("#segmentationNotice");
 let model = [];
+let imageSegmenter;
+let personMaskCanvas;
+let segmenting = false;
+let previewFrame = 0;
 const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
 // Baseline profiles are hand-selected color references, not photos used for training.
 const presets = [
@@ -33,6 +40,7 @@ async function requestCamera() {
   startButton.textContent = "Camera ready";
   startButton.disabled = true;
   classifyButton.disabled = false; addButton.disabled = false;
+  initializePersonSegmentation();
   renderFocusedPreview();
 }
 
@@ -42,6 +50,16 @@ function drawFocusedFrame() {
   processedCtx.filter = "blur(14px)";
   processedCtx.drawImage(video, 0, 0, width, height);
   processedCtx.filter = "none";
+  if (personMaskCanvas) {
+    foregroundCanvas.width = width; foregroundCanvas.height = height;
+    foregroundCtx.clearRect(0, 0, width, height);
+    foregroundCtx.drawImage(video, 0, 0, width, height);
+    foregroundCtx.globalCompositeOperation = "destination-in";
+    foregroundCtx.drawImage(personMaskCanvas, 0, 0, width, height);
+    foregroundCtx.globalCompositeOperation = "source-over";
+    processedCtx.drawImage(foregroundCanvas, 0, 0);
+    return;
+  }
   processedCtx.save();
   processedCtx.beginPath();
   processedCtx.ellipse(width / 2, height / 2, width * .29, height * .32, 0, 0, Math.PI * 2);
@@ -51,8 +69,63 @@ function drawFocusedFrame() {
 }
 
 function renderFocusedPreview() {
-  if (video.videoWidth) drawFocusedFrame();
+  if (video.videoWidth) {
+    drawFocusedFrame();
+    if (imageSegmenter && !segmenting && ++previewFrame % 6 === 0) updatePersonMask();
+  }
   if (video.srcObject) requestAnimationFrame(renderFocusedPreview);
+}
+
+async function initializePersonSegmentation() {
+  if (imageSegmenter || segmentationNotice.textContent) return;
+  segmentationNotice.textContent = "Loading person segmentation…";
+  try {
+    const { FilesetResolver, ImageSegmenter } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1");
+    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm");
+    imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      outputCategoryMask: true,
+      outputConfidenceMasks: false
+    });
+    segmentationNotice.textContent = "Person segmentation is active: detected holder pixels are excluded from the scan.";
+  } catch (error) {
+    segmentationNotice.textContent = "Person segmentation could not load; using center-guided blur only.";
+    console.warn("MediaPipe segmentation unavailable", error);
+  }
+}
+
+function setPersonMask(mask) {
+  const width = processedFrame.width, height = processedFrame.height;
+  const source = mask.getAsUint8Array();
+  personMaskCanvas = document.createElement("canvas");
+  personMaskCanvas.width = width; personMaskCanvas.height = height;
+  const maskCtx = personMaskCanvas.getContext("2d");
+  const pixels = maskCtx.createImageData(width, height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const centeredX = (x - width / 2) / (width * .29), centeredY = (y - height / 2) / (height * .32);
+    const insideGuide = centeredX * centeredX + centeredY * centeredY <= 1;
+    const sourceX = Math.min(mask.width - 1, Math.floor(x * mask.width / width));
+    const sourceY = Math.min(mask.height - 1, Math.floor(y * mask.height / height));
+    const isPerson = source[sourceY * mask.width + sourceX] === 1;
+    if (insideGuide && !isPerson) pixels.data[(y * width + x) * 4 + 3] = 255;
+  }
+  maskCtx.putImageData(pixels, 0, 0);
+}
+
+function updatePersonMask() {
+  segmenting = true;
+  try {
+    const result = imageSegmenter.segmentForVideo(video, performance.now());
+    if (result.categoryMask) setPersonMask(result.categoryMask);
+    result.close?.();
+  } catch (error) {
+    console.warn("Person segmentation frame failed", error);
+  }
+  segmenting = false;
 }
 
 // 3×3 mean RGB cells: simple, transparent and entirely local feature extraction.
@@ -74,7 +147,13 @@ function cameraFeature() {
   if (!video.videoWidth) throw new Error("Wait for the camera image.");
   canvas.width = 180; canvas.height = 135;
   // Measure only the guided center region, not the blurred backdrop or holder.
-  ctx.drawImage(processedFrame, processedFrame.width * .21, processedFrame.height * .18, processedFrame.width * .58, processedFrame.height * .64, 0, 0, canvas.width, canvas.height);
+  if (personMaskCanvas) {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(foregroundCanvas, foregroundCanvas.width * .21, foregroundCanvas.height * .18, foregroundCanvas.width * .58, foregroundCanvas.height * .64, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.drawImage(processedFrame, processedFrame.width * .21, processedFrame.height * .18, processedFrame.width * .58, processedFrame.height * .64, 0, 0, canvas.width, canvas.height);
+  }
   return canvasFeature();
 }
 
