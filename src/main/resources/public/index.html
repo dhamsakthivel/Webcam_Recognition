@@ -8,10 +8,11 @@
 </head>
 <body>
   <main>
-    <header><p class="eyebrow">PRIVATE · LOCAL · EXPERIMENTAL</p><h1>Fruit Vision</h1><p>Teach this local classifier to recognize the produce in your camera.</p></header>
+    <header class="app-header"><div><p class="eyebrow">PRIVATE EDGE VISION · LOCALHOST</p><h1>Fruit Vision</h1><p>Local produce scanning with a user-controlled target area.</p></div><div class="system-status"><span></span> SYSTEM READY</div></header>
     <section class="camera-card">
-      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden>Tap product to move focus</div><div id="cameraState">Camera is off</div></div>
-      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Identify produce</button><button id="resetFocus" disabled>Reset focus</button></div>
+      <div class="camera-toolbar"><span>LIVE CAMERA</span><span>FOCUS SEGMENTATION</span><span>LOCAL PROCESSING</span></div>
+      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden><span>SCAN TARGET</span><small>Tap product to move</small></div><div id="cameraState">Camera is off</div></div>
+      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Scan target</button><button id="resetFocus" disabled>Reset focus</button></div>
       <label class="focus-size" for="focusSize">Scan area <input id="focusSize" type="range" min="40" max="80" value="58" disabled> <span id="focusSizeValue">58%</span></label>
       <div id="result" role="status">Add examples, then scan an item.</div>
       <p id="segmentationNotice" class="hint" role="status"></p>
