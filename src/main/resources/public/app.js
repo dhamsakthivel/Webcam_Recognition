@@ -9,6 +9,14 @@ const labelsEl = document.querySelector("#labels");
 const countEl = document.querySelector("#modelCount");
 const notice = document.querySelector("#sampleNotice");
 let model = [];
+const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
+// Baseline profiles are hand-selected color references, not photos used for training.
+const presets = [
+  { label: "red apple", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Red%20Apple.jpg?width=640", source: "Wikimedia Commons · Red Apple", samples: profile([180, 45, 30], [205, 65, 42], [155, 42, 28]) },
+  { label: "banana", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Banana-Single.jpg?width=640", source: "Wikimedia Commons · Banana-Single", samples: profile([220, 195, 65], [200, 175, 52], [235, 212, 95]) },
+  { label: "carrot", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Carrots.jpg?width=640", source: "Wikimedia Commons · Carrots", samples: profile([220, 100, 32], [195, 75, 22], [235, 125, 45]) },
+  { label: "broccoli", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Broccoli_and_cross_section_edit.jpg?width=640", source: "Wikimedia Commons · Broccoli", samples: profile([48, 100, 38], [37, 78, 30], [67, 120, 49]) }
+];
 
 async function requestCamera() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser does not support camera access.");
@@ -53,17 +61,32 @@ function classify(feature) {
 
 async function loadModel() {
   const [info, savedModel] = await Promise.all([fetch("/api/labels").then(response => response.json()), fetch("/api/model").then(response => response.json())]);
-  model = savedModel.samples.reduce((labels, sample) => {
-    (labels[sample.label] ??= []).push(sample.feature.split(",").map(Number));
+  model = presets.reduce((labels, preset) => {
+    labels[preset.label] = [...preset.samples];
     return labels;
   }, {});
-  countEl.textContent = `${info.labels.length} label${info.labels.length === 1 ? "" : "s"} · ${info.sampleCount} view${info.sampleCount === 1 ? "" : "s"}`;
+  savedModel.samples.forEach(sample => {
+    (model[sample.label] ??= []).push(sample.feature.split(",").map(Number));
+  });
+  countEl.textContent = `${presets.length + info.labels.length} label${presets.length + info.labels.length === 1 ? "" : "s"} · ${info.sampleCount} personal view${info.sampleCount === 1 ? "" : "s"}`;
   labelsEl.innerHTML = info.labels.length ? "" : '<p class="hint">No labels yet. Teach the model using the camera above.</p>';
   info.labels.forEach(label => {
     const card = document.createElement("div"); card.className = "label-card";
     card.innerHTML = `<span>${label}</span><button aria-label="Remove ${label}">Remove</button>`;
     card.querySelector("button").onclick = async () => { await fetch("/api/samples", { method: "DELETE", headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: new URLSearchParams({label}) }); delete model[label]; await loadModel(); };
     labelsEl.append(card);
+  });
+}
+
+function renderPresets() {
+  const container = document.querySelector("#presets");
+  presets.forEach(preset => {
+    const card = document.createElement("article"); card.className = "preset-card";
+    const image = document.createElement("img");
+    image.src = preset.image; image.alt = `Reference photo of ${preset.label}`; image.loading = "lazy";
+    const title = document.createElement("h3"); title.textContent = preset.label;
+    const source = document.createElement("a"); source.href = preset.image; source.target = "_blank"; source.rel = "noopener noreferrer"; source.textContent = `${preset.source} ↗`;
+    card.append(image, title, source); container.append(card);
   });
 }
 
@@ -88,4 +111,5 @@ classifyButton.onclick = () => {
     result.innerHTML = prediction.confidence >= 70 ? `<strong>${prediction.label}</strong> · ${prediction.confidence}% confidence` : `Not confident enough (${prediction.confidence}%). Add more varied samples or improve lighting.`;
   } catch (error) { result.textContent = error.message; }
 };
+renderPresets();
 loadModel();

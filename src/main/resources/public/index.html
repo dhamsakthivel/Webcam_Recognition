@@ -15,6 +15,11 @@
       <div id="result" role="status">Add examples, then scan an item.</div>
       <p class="hint">For a useful result, fill most of the frame with one item under consistent light.</p>
     </section>
+    <section>
+      <div class="section-heading"><div><p class="eyebrow">STARTER CATALOG</p><h2>Ready-to-scan examples</h2></div><span>4 baseline labels</span></div>
+      <p class="hint catalog-intro">These public-domain reference images and baseline color profiles are included immediately. Add your own camera views to improve recognition in your lighting.</p>
+      <div id="presets" class="preset-grid"></div>
+    </section>
     <section class="teach">
       <div><p class="eyebrow">BUILD YOUR LOCAL MODEL</p><h2>Teach a fruit or vegetable</h2><p>Enter a name and save 8–15 camera views: front, side, slightly closer, and in normal room lighting. Samples remain in <code>data/produce-samples.tsv</code> on this computer.</p></div>
       <form id="teachForm"><label for="label">Produce name</label><div class="form-row"><input id="label" maxlength="40" placeholder="e.g. red apple" required><button disabled id="addSample">Save camera view</button></div><p id="sampleNotice" class="hint"></p></form>

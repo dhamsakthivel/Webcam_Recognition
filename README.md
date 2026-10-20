@@ -36,6 +36,15 @@ ask for a camera.
 Samples are saved locally in `data/produce-samples.tsv`. Delete a label from
 the UI to remove its saved samples.
 
+## Starter examples
+
+The interface begins with red apple, banana, carrot, and broccoli labels. Each
+has a small hand-selected baseline color profile so it can be scanned without
+manual training. The catalog shows linked public-domain reference images from
+Wikimedia Commons; they are loaded only for display and are not sent to the
+server or used as hidden training data. Add personal camera views to a starter
+label to adapt it to the actual camera, backdrop, and lighting.
+
 ## Recognition approach and limitations
 
 The app extracts a transparent 3×3 grid of mean RGB values from each captured
@@ -43,8 +52,9 @@ frame and uses nearest-sample distance to classify it. This keeps all image
 processing on the device and makes it easy to understand, but it is a
 prototype—not a production object-detection model. The UI only accepts a
 prediction at a 70% confidence threshold. That threshold does **not** promise
-70% real-world accuracy; validating an accuracy target requires a held-out,
-representative test set for each added produce type.
+70% real-world accuracy; neither the starter color profiles nor reference
+photos are sufficient to validate one. A 70% accuracy target requires a
+held-out, representative test set for each added produce type.
 
 For higher accuracy, replace the browser feature extractor with an exported
 TensorFlow Lite/ONNX image classifier and evaluate it per class under the
