@@ -4,6 +4,10 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $DataDirectory = Join-Path $Root "data\datasets"
 $Fruits360Directory = Join-Path $DataDirectory "fruits-360-100x100"
+$GroceryStoreDirectory = Join-Path $DataDirectory "GroceryStoreDataset"
+$UnileonDirectory = Join-Path $DataDirectory "unileon-yolo-detection"
+$UnileonArchive = Join-Path $UnileonDirectory "AgricultureDataset.zip"
+$UnileonUrl = "https://zenodo.org/api/records/18904638/files/AgricultureDataset.zip/content"
 New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
 
 if (-not (Test-Path (Join-Path $Fruits360Directory ".git"))) {
@@ -13,17 +17,35 @@ else {
     Write-Host "Fruits-360 already exists at $Fruits360Directory; skipping clone."
 }
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python is required for Kaggle downloads. Install Python 3, then run this script again."
+if (-not (Test-Path (Join-Path $GroceryStoreDirectory ".git"))) {
+    git clone --depth 1 https://github.com/marcusklasson/GroceryStoreDataset.git $GroceryStoreDirectory
+}
+else {
+    Write-Host "GroceryStoreDataset already exists at $GroceryStoreDirectory; skipping clone."
 }
 
-python -m pip install --upgrade kaggle
+if (-not (Test-Path $UnileonArchive)) {
+    New-Item -ItemType Directory -Path $UnileonDirectory -Force | Out-Null
+    Write-Host "Downloading the Universidad de León YOLO dataset (~1 GB)…"
+    Invoke-WebRequest -Uri $UnileonUrl -OutFile $UnileonArchive
+}
+if (-not (Test-Path (Join-Path $UnileonDirectory ".extracted"))) {
+    Expand-Archive -Path $UnileonArchive -DestinationPath $UnileonDirectory -Force
+    New-Item -ItemType File -Path (Join-Path $UnileonDirectory ".extracted") | Out-Null
+}
+
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Warning "Python is unavailable; skipping optional Kaggle downloads."
+    exit 0
+}
 
 $KaggleCredentials = Join-Path $HOME ".kaggle\kaggle.json"
 if (-not (Test-Path $KaggleCredentials)) {
-    throw "Kaggle credentials are missing. Create $KaggleCredentials with your Kaggle API token. See https://www.kaggle.com/docs/api"
+    Write-Warning "Kaggle credentials are missing; skipping optional Kaggle downloads. Create $KaggleCredentials with your Kaggle API token. See https://www.kaggle.com/docs/api"
+    exit 0
 }
 
+python -m pip install --upgrade kaggle
 $KaggleFruits = Join-Path $DataDirectory "kaggle-fruits"
 $KaggleFruitVegetable = Join-Path $DataDirectory "kaggle-fruit-vegetable"
 New-Item -ItemType Directory -Path $KaggleFruits -Force | Out-Null

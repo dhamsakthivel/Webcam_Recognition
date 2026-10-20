@@ -28,7 +28,7 @@ ask for a camera.
 
 ## Optional open datasets
 
-The repository includes setup scripts for three image datasets. Downloads are
+The repository includes setup scripts for five image datasets. Downloads are
 placed under the ignored `data/datasets/` directory and are never committed.
 Review each dataset's license and terms before using it in a product.
 
@@ -46,17 +46,26 @@ chmod +x scripts/fetch-datasets.sh
 ```
 
 Both scripts shallow-clone
-[Fruits-360](https://github.com/fruits-360/fruits-360-100x100). They then
-install the latest Kaggle CLI and download `moltean/fruits` and
+[Fruits-360](https://github.com/fruits-360/fruits-360-100x100) and the
+[GroceryStore Dataset](https://github.com/marcusklasson/GroceryStoreDataset).
+They also download and extract the ~1 GB Universidad de León
+[Multi-Class Fruit and Vegetable Detection Dataset](https://doi.org/10.5281/zenodo.18904638)
+(20,216 images, 30 categories, YOLO labels, CC BY 4.0). GroceryStore supplies
+5,125 real smartphone grocery images and is MIT-licensed.
+
+Finally, when credentials are available, the scripts install the latest Kaggle
+CLI and download `moltean/fruits` and
 `kritikseth/fruit-and-vegetable-image-recognition`. The Kaggle steps require a
 valid API token in `~/.kaggle/kaggle.json`; credentials are not included in or
-requested by this repository.
+requested by this repository. Without that token, the scripts complete the
+GitHub and Zenodo downloads and skip Kaggle.
 
 These datasets are training/evaluation sources, not automatically imported
-into the browser model. The included classifier uses a small color-feature
-prototype rather than a neural image model; bulk data needs a separately
-trained, evaluated TensorFlow Lite or ONNX model before it can improve live
-recognition.
+into the browser model. The Universidad de León archive provides detection
+annotations, not a trained model. The included classifier uses a small
+color-feature prototype rather than a neural image model; bulk data needs a
+separately trained, evaluated YOLO model (for multiple-product detection) or
+TensorFlow Lite/ONNX classifier before it can improve live recognition.
 
 ## Training a label
 
