@@ -10,10 +10,10 @@
   <main>
     <header><p class="eyebrow">PRIVATE · LOCAL · EXPERIMENTAL</p><h1>Fruit Vision</h1><p>Teach this local classifier to recognize the produce in your camera.</p></header>
     <section class="camera-card">
-      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="frame" hidden></canvas><div id="cameraState">Camera is off</div></div>
+      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden>Place one item inside this area</div><div id="cameraState">Camera is off</div></div>
       <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Identify produce</button></div>
       <div id="result" role="status">Add examples, then scan an item.</div>
-      <p class="hint">For a useful result, fill most of the frame with one item under consistent light.</p>
+      <p class="hint">The background outside the center guide is blurred locally. Keep one item in the guide; focused reference images are saved with your samples.</p>
     </section>
     <section>
       <div class="section-heading"><div><p class="eyebrow">STARTER CATALOG</p><h2>Ready-to-scan examples</h2></div><span>4 baseline labels</span></div>

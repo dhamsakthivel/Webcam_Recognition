@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 
 /**
@@ -24,6 +25,7 @@ import java.util.concurrent.Executors;
 public final class FruitVisionServer {
     private static final Path PUBLIC = Path.of("src/main/resources/public").toAbsolutePath();
     private static final Path MODEL_FILE = Path.of("data", "produce-samples.tsv");
+    private static final Path REFERENCE_IMAGES = Path.of("data", "reference-images");
     private static final List<Sample> samples = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
@@ -77,9 +79,10 @@ public final class FruitVisionServer {
                 throw new IllegalArgumentException("The camera feature is invalid.");
             }
         }
+        boolean snapshotSaved = saveSnapshot(label, form.getOrDefault("snapshot", ""));
         samples.add(new Sample(label, feature));
         persistSamples();
-        json(exchange, 201, "{\"ok\":true,\"sampleCount\":" + samples.size() + "}");
+        json(exchange, 201, "{\"ok\":true,\"snapshotSaved\":" + snapshotSaved + ",\"sampleCount\":" + samples.size() + "}");
     }
 
     private static synchronized void deleteLabel(HttpExchange exchange) throws IOException {
@@ -91,6 +94,7 @@ public final class FruitVisionServer {
 
     private static Map<String, String> form(HttpExchange exchange) throws IOException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        if (body.length() > 2_000_000) throw new IllegalArgumentException("The reference image is too large.");
         return java.util.Arrays.stream(body.split("&"))
                 .filter(pair -> pair.contains("="))
                 .map(pair -> pair.split("=", 2))
@@ -100,6 +104,23 @@ public final class FruitVisionServer {
 
     private static String decode(String value) {
         return URLDecoder.decode(value, StandardCharsets.UTF_8);
+    }
+
+    private static boolean saveSnapshot(String label, String snapshot) throws IOException {
+        if (snapshot.isBlank()) return false;
+        String prefix = "data:image/png;base64,";
+        if (!snapshot.startsWith(prefix)) throw new IllegalArgumentException("The reference image must be a PNG.");
+        byte[] image;
+        try {
+            image = Base64.getDecoder().decode(snapshot.substring(prefix.length()));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("The reference image is invalid.");
+        }
+        if (image.length == 0 || image.length > 1_000_000) throw new IllegalArgumentException("The reference image is too large.");
+        Files.createDirectories(REFERENCE_IMAGES);
+        String safeLabel = label.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+        Files.write(REFERENCE_IMAGES.resolve(safeLabel + "-" + UUID.randomUUID() + ".png"), image);
+        return true;
     }
 
     private static void serveAsset(HttpExchange exchange, String requestPath) throws IOException {

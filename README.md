@@ -36,6 +36,16 @@ ask for a camera.
 Samples are saved locally in `data/produce-samples.tsv`. Delete a label from
 the UI to remove its saved samples.
 
+## Focused scanning and reference captures
+
+While the camera is active, Fruit Vision blurs the area outside its central
+scan guide. Classification extracts the feature only from that guided region,
+which reduces the influence of a holder or background. Saving a camera view
+also writes the focused PNG locally under `data/reference-images/` so it can
+be reviewed as a reference. This is center-guided masking rather than semantic
+person/background segmentation: place a single produce item in the guide for
+the intended effect.
+
 ## Starter examples
 
 The interface begins with red apple, banana, carrot, and broccoli labels. Each

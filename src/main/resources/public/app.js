@@ -1,6 +1,8 @@
 const video = document.querySelector("#camera");
 const canvas = document.querySelector("#frame");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
+const processedFrame = document.querySelector("#processedFrame");
+const processedCtx = processedFrame.getContext("2d");
 const startButton = document.querySelector("#startCamera");
 const classifyButton = document.querySelector("#classify");
 const addButton = document.querySelector("#addSample");
@@ -25,9 +27,32 @@ async function requestCamera() {
   video.srcObject = stream;
   await video.play();
   document.querySelector("#cameraState").hidden = true;
+  document.querySelector("#focusGuide").hidden = false;
+  video.hidden = true;
+  processedFrame.hidden = false;
   startButton.textContent = "Camera ready";
   startButton.disabled = true;
   classifyButton.disabled = false; addButton.disabled = false;
+  renderFocusedPreview();
+}
+
+function drawFocusedFrame() {
+  const width = 480, height = 360;
+  processedFrame.width = width; processedFrame.height = height;
+  processedCtx.filter = "blur(14px)";
+  processedCtx.drawImage(video, 0, 0, width, height);
+  processedCtx.filter = "none";
+  processedCtx.save();
+  processedCtx.beginPath();
+  processedCtx.ellipse(width / 2, height / 2, width * .29, height * .32, 0, 0, Math.PI * 2);
+  processedCtx.clip();
+  processedCtx.drawImage(video, 0, 0, width, height);
+  processedCtx.restore();
+}
+
+function renderFocusedPreview() {
+  if (video.videoWidth) drawFocusedFrame();
+  if (video.srcObject) requestAnimationFrame(renderFocusedPreview);
 }
 
 // 3×3 mean RGB cells: simple, transparent and entirely local feature extraction.
@@ -48,8 +73,14 @@ function canvasFeature() {
 function cameraFeature() {
   if (!video.videoWidth) throw new Error("Wait for the camera image.");
   canvas.width = 180; canvas.height = 135;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // Measure only the guided center region, not the blurred backdrop or holder.
+  ctx.drawImage(processedFrame, processedFrame.width * .21, processedFrame.height * .18, processedFrame.width * .58, processedFrame.height * .64, 0, 0, canvas.width, canvas.height);
   return canvasFeature();
+}
+
+function focusedSnapshot() {
+  if (!processedFrame.width) throw new Error("Wait for the camera image.");
+  return processedFrame.toDataURL("image/png");
 }
 
 function classify(feature) {
@@ -130,9 +161,9 @@ document.querySelector("#teachForm").onsubmit = async event => {
   try {
     const label = document.querySelector("#label").value.trim();
     const feature = cameraFeature();
-    await fetch("/api/samples", { method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: new URLSearchParams({ label, feature: feature.join(",") }) }).then(async response => { if (!response.ok) throw new Error((await response.json()).error); });
+    await fetch("/api/samples", { method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: new URLSearchParams({ label, feature: feature.join(","), snapshot: focusedSnapshot() }) }).then(async response => { if (!response.ok) throw new Error((await response.json()).error); });
     (model[label] ??= []).push(feature);
-    notice.textContent = `Saved a view of ${label}. Add several more views for a stronger model.`;
+    notice.textContent = `Saved a focused reference view of ${label}. Add several more views for a stronger model.`;
     await loadModel();
   } catch (error) { notice.textContent = error.message; }
 };
