@@ -8,6 +8,10 @@ const foregroundCtx = foregroundCanvas.getContext("2d");
 const startButton = document.querySelector("#startCamera");
 const classifyButton = document.querySelector("#classify");
 const addButton = document.querySelector("#addSample");
+const resetFocusButton = document.querySelector("#resetFocus");
+const focusSizeInput = document.querySelector("#focusSize");
+const focusSizeValue = document.querySelector("#focusSizeValue");
+const focusGuide = document.querySelector("#focusGuide");
 const result = document.querySelector("#result");
 const labelsEl = document.querySelector("#labels");
 const countEl = document.querySelector("#modelCount");
@@ -19,6 +23,7 @@ let imageSegmenter;
 let personMaskCanvas;
 let segmenting = false;
 let previewFrame = 0;
+const focus = { x: .5, y: .5, size: .58 };
 const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
 // Baseline profiles are hand-selected color references, not photos used for training.
 const presets = [
@@ -34,18 +39,46 @@ async function requestCamera() {
   video.srcObject = stream;
   await video.play();
   document.querySelector("#cameraState").hidden = true;
-  document.querySelector("#focusGuide").hidden = false;
+  focusGuide.hidden = false;
   video.hidden = true;
   processedFrame.hidden = false;
   startButton.textContent = "Camera ready";
   startButton.disabled = true;
   classifyButton.disabled = false; addButton.disabled = false;
+  resetFocusButton.disabled = false; focusSizeInput.disabled = false;
+  updateFocusGuide();
   initializePersonSegmentation();
   renderFocusedPreview();
 }
 
+function focusRect(width = processedFrame.width, height = processedFrame.height) {
+  const widthRatio = focus.size;
+  const heightRatio = Math.min(.8, focus.size * 1.1);
+  return {
+    x: (focus.x - widthRatio / 2) * width,
+    y: (focus.y - heightRatio / 2) * height,
+    width: widthRatio * width,
+    height: heightRatio * height
+  };
+}
+
+function constrainFocus() {
+  const heightRatio = Math.min(.8, focus.size * 1.1);
+  focus.x = Math.max(focus.size / 2, Math.min(1 - focus.size / 2, focus.x));
+  focus.y = Math.max(heightRatio / 2, Math.min(1 - heightRatio / 2, focus.y));
+}
+
+function updateFocusGuide() {
+  constrainFocus();
+  const rect = focusRect(100, 100);
+  focusGuide.style.left = `${rect.x}%`;
+  focusGuide.style.top = `${rect.y}%`;
+  focusGuide.style.width = `${rect.width}%`;
+  focusGuide.style.height = `${rect.height}%`;
+}
+
 function drawFocusedFrame() {
-  const width = 480, height = 360;
+  const width = 640, height = 360;
   processedFrame.width = width; processedFrame.height = height;
   processedCtx.filter = "blur(14px)";
   processedCtx.drawImage(video, 0, 0, width, height);
@@ -60,9 +93,10 @@ function drawFocusedFrame() {
     processedCtx.drawImage(foregroundCanvas, 0, 0);
     return;
   }
+  const guide = focusRect(width, height);
   processedCtx.save();
   processedCtx.beginPath();
-  processedCtx.ellipse(width / 2, height / 2, width * .29, height * .32, 0, 0, Math.PI * 2);
+  processedCtx.ellipse(guide.x + guide.width / 2, guide.y + guide.height / 2, guide.width / 2, guide.height / 2, 0, 0, Math.PI * 2);
   processedCtx.clip();
   processedCtx.drawImage(video, 0, 0, width, height);
   processedCtx.restore();
@@ -105,8 +139,9 @@ function setPersonMask(mask) {
   personMaskCanvas.width = width; personMaskCanvas.height = height;
   const maskCtx = personMaskCanvas.getContext("2d");
   const pixels = maskCtx.createImageData(width, height);
+  const guide = focusRect(width, height);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const centeredX = (x - width / 2) / (width * .29), centeredY = (y - height / 2) / (height * .32);
+    const centeredX = (x - (guide.x + guide.width / 2)) / (guide.width / 2), centeredY = (y - (guide.y + guide.height / 2)) / (guide.height / 2);
     const insideGuide = centeredX * centeredX + centeredY * centeredY <= 1;
     const sourceX = Math.min(mask.width - 1, Math.floor(x * mask.width / width));
     const sourceY = Math.min(mask.height - 1, Math.floor(y * mask.height / height));
@@ -146,13 +181,14 @@ function canvasFeature() {
 function cameraFeature() {
   if (!video.videoWidth) throw new Error("Wait for the camera image.");
   canvas.width = 180; canvas.height = 135;
+  const guide = focusRect();
   // Measure only the guided center region, not the blurred backdrop or holder.
   if (personMaskCanvas) {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(foregroundCanvas, foregroundCanvas.width * .21, foregroundCanvas.height * .18, foregroundCanvas.width * .58, foregroundCanvas.height * .64, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(foregroundCanvas, guide.x, guide.y, guide.width, guide.height, 0, 0, canvas.width, canvas.height);
   } else {
-    ctx.drawImage(processedFrame, processedFrame.width * .21, processedFrame.height * .18, processedFrame.width * .58, processedFrame.height * .64, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(processedFrame, guide.x, guide.y, guide.width, guide.height, 0, 0, canvas.width, canvas.height);
   }
   return canvasFeature();
 }
@@ -234,6 +270,28 @@ async function loadOpenSourceImageSeeds() {
 
 startButton.onclick = async () => {
   try { await requestCamera(); } catch (error) { result.textContent = `Camera unavailable: ${error.message} Use localhost and allow the browser camera prompt.`; }
+};
+processedFrame.addEventListener("pointerdown", event => {
+  if (!video.videoWidth) return;
+  const bounds = processedFrame.getBoundingClientRect();
+  focus.x = (event.clientX - bounds.left) / bounds.width;
+  focus.y = (event.clientY - bounds.top) / bounds.height;
+  personMaskCanvas = undefined;
+  updateFocusGuide();
+  result.textContent = "Focus moved. Resize the guide so one product fills it, then identify or save.";
+});
+focusSizeInput.oninput = () => {
+  focus.size = Number(focusSizeInput.value) / 100;
+  focusSizeValue.textContent = `${focusSizeInput.value}%`;
+  personMaskCanvas = undefined;
+  updateFocusGuide();
+};
+resetFocusButton.onclick = () => {
+  focus.x = .5; focus.y = .5; focus.size = .58;
+  focusSizeInput.value = "58"; focusSizeValue.textContent = "58%";
+  personMaskCanvas = undefined;
+  updateFocusGuide();
+  result.textContent = "Focus reset to the center.";
 };
 document.querySelector("#teachForm").onsubmit = async event => {
   event.preventDefault();

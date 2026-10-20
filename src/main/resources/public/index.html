@@ -10,11 +10,12 @@
   <main>
     <header><p class="eyebrow">PRIVATE · LOCAL · EXPERIMENTAL</p><h1>Fruit Vision</h1><p>Teach this local classifier to recognize the produce in your camera.</p></header>
     <section class="camera-card">
-      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden>Place one item inside this area</div><div id="cameraState">Camera is off</div></div>
-      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Identify produce</button></div>
+      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden>Tap product to move focus</div><div id="cameraState">Camera is off</div></div>
+      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Identify produce</button><button id="resetFocus" disabled>Reset focus</button></div>
+      <label class="focus-size" for="focusSize">Scan area <input id="focusSize" type="range" min="40" max="80" value="58" disabled> <span id="focusSizeValue">58%</span></label>
       <div id="result" role="status">Add examples, then scan an item.</div>
       <p id="segmentationNotice" class="hint" role="status"></p>
-      <p class="hint">The background outside the center guide is blurred locally. Keep one item in the guide; focused reference images are saved with your samples.</p>
+      <p class="hint">Tap/click the produce to move the guide, then resize it to surround one item. The area outside the guide is blurred locally and focused reference images are saved with your samples.</p>
     </section>
     <section>
       <div class="section-heading"><div><p class="eyebrow">STARTER CATALOG</p><h2>Ready-to-scan examples</h2></div><span>4 baseline labels</span></div>
