@@ -26,6 +26,38 @@ in the permission prompt. The response includes
 `Permissions-Policy: camera=(self)` so the locally served page is permitted to
 ask for a camera.
 
+## Optional open datasets
+
+The repository includes setup scripts for three image datasets. Downloads are
+placed under the ignored `data/datasets/` directory and are never committed.
+Review each dataset's license and terms before using it in a product.
+
+On Windows PowerShell:
+
+```powershell
+.\scripts\fetch-datasets.ps1
+```
+
+On macOS/Linux:
+
+```bash
+chmod +x scripts/fetch-datasets.sh
+./scripts/fetch-datasets.sh
+```
+
+Both scripts shallow-clone
+[Fruits-360](https://github.com/fruits-360/fruits-360-100x100). They then
+install the latest Kaggle CLI and download `moltean/fruits` and
+`kritikseth/fruit-and-vegetable-image-recognition`. The Kaggle steps require a
+valid API token in `~/.kaggle/kaggle.json`; credentials are not included in or
+requested by this repository.
+
+These datasets are training/evaluation sources, not automatically imported
+into the browser model. The included classifier uses a small color-feature
+prototype rather than a neural image model; bulk data needs a separately
+trained, evaluated TensorFlow Lite or ONNX model before it can improve live
+recognition.
+
 ## Training a label
 
 1. Enter a fruit or vegetable name.
