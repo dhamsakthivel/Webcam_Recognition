@@ -8,14 +8,15 @@ const result = document.querySelector("#result");
 const labelsEl = document.querySelector("#labels");
 const countEl = document.querySelector("#modelCount");
 const notice = document.querySelector("#sampleNotice");
+const datasetNotice = document.querySelector("#datasetNotice");
 let model = [];
 const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
 // Baseline profiles are hand-selected color references, not photos used for training.
 const presets = [
-  { label: "red apple", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Red%20Apple.jpg?width=640", source: "Wikimedia Commons · Red Apple", samples: profile([180, 45, 30], [205, 65, 42], [155, 42, 28]) },
-  { label: "banana", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Banana-Single.jpg?width=640", source: "Wikimedia Commons · Banana-Single", samples: profile([220, 195, 65], [200, 175, 52], [235, 212, 95]) },
-  { label: "carrot", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Carrots.jpg?width=640", source: "Wikimedia Commons · Carrots", samples: profile([220, 100, 32], [195, 75, 22], [235, 125, 45]) },
-  { label: "broccoli", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Broccoli_and_cross_section_edit.jpg?width=640", source: "Wikimedia Commons · Broccoli", samples: profile([48, 100, 38], [37, 78, 30], [67, 120, 49]) }
+  { label: "red apple", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Red%20Apple.jpg?width=640", attribution: "https://commons.wikimedia.org/wiki/File:Red_Apple.jpg", source: "Abhijit Tembhekar · CC BY 2.0", samples: profile([180, 45, 30], [205, 65, 42], [155, 42, 28]) },
+  { label: "banana", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Banana-Single.jpg?width=640", attribution: "https://commons.wikimedia.org/wiki/File:Banana-Single.jpg", source: "Evan-Amos · CC BY-SA 3.0", samples: profile([220, 195, 65], [200, 175, 52], [235, 212, 95]) },
+  { label: "carrot", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Carrots.jpg?width=640", attribution: "https://commons.wikimedia.org/wiki/File:Carrots.jpg", source: "Medved' · Public domain", samples: profile([220, 100, 32], [195, 75, 22], [235, 125, 45]) },
+  { label: "broccoli", image: "https://commons.wikimedia.org/wiki/Special:FilePath/Broccoli_and_cross_section_edit.jpg?width=640", attribution: "https://commons.wikimedia.org/wiki/File:Broccoli_and_cross_section_edit.jpg", source: "Fir0002 · GFDL 1.2", samples: profile([48, 100, 38], [37, 78, 30], [67, 120, 49]) }
 ];
 
 async function requestCamera() {
@@ -30,20 +31,25 @@ async function requestCamera() {
 }
 
 // 3×3 mean RGB cells: simple, transparent and entirely local feature extraction.
-function cameraFeature() {
-  if (!video.videoWidth) throw new Error("Wait for the camera image.");
-  canvas.width = 180; canvas.height = 135;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+function canvasFeature() {
   const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const values = [];
+  const cellWidth = canvas.width / 3, cellHeight = canvas.height / 3;
   for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
     let r = 0, g = 0, b = 0, n = 0;
-    for (let y = row * 45; y < (row + 1) * 45; y++) for (let x = col * 60; x < (col + 1) * 60; x++) {
-      const i = (y * 180 + x) * 4; r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; n++;
+    for (let y = Math.floor(row * cellHeight); y < Math.floor((row + 1) * cellHeight); y++) for (let x = Math.floor(col * cellWidth); x < Math.floor((col + 1) * cellWidth); x++) {
+      const i = (y * canvas.width + x) * 4; r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; n++;
     }
     values.push(r / n, g / n, b / n);
   }
   return values;
+}
+
+function cameraFeature() {
+  if (!video.videoWidth) throw new Error("Wait for the camera image.");
+  canvas.width = 180; canvas.height = 135;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvasFeature();
 }
 
 function classify(feature) {
@@ -85,9 +91,35 @@ function renderPresets() {
     const image = document.createElement("img");
     image.src = preset.image; image.alt = `Reference photo of ${preset.label}`; image.loading = "lazy";
     const title = document.createElement("h3"); title.textContent = preset.label;
-    const source = document.createElement("a"); source.href = preset.image; source.target = "_blank"; source.rel = "noopener noreferrer"; source.textContent = `${preset.source} ↗`;
+    const source = document.createElement("a"); source.href = preset.attribution; source.target = "_blank"; source.rel = "noopener noreferrer"; source.textContent = `${preset.source} ↗`;
     card.append(image, title, source); container.append(card);
   });
+}
+
+async function imageSeedSamples(preset) {
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.src = preset.image;
+  await image.decode();
+  const crops = [[0, 0, 1, 1], [.1, .1, .8, .8], [.2, .15, .6, .7]];
+  return crops.map(([left, top, width, height]) => {
+    canvas.width = 180; canvas.height = 135;
+    ctx.drawImage(image, left * image.naturalWidth, top * image.naturalHeight, width * image.naturalWidth, height * image.naturalHeight, 0, 0, canvas.width, canvas.height);
+    return canvasFeature();
+  });
+}
+
+async function loadOpenSourceImageSeeds() {
+  const outcomes = await Promise.allSettled(presets.map(async preset => ({ label: preset.label, samples: await imageSeedSamples(preset) })));
+  let sampleCount = 0;
+  outcomes.forEach(outcome => {
+    if (outcome.status !== "fulfilled") return;
+    const { label, samples } = outcome.value;
+    model[label].push(...samples); sampleCount += samples.length;
+  });
+  datasetNotice.textContent = sampleCount
+    ? `${sampleCount} open-source image seed samples loaded from Wikimedia Commons.`
+    : "Open-source image seed samples could not be loaded; baseline profiles are still available.";
 }
 
 startButton.onclick = async () => {
@@ -111,5 +143,9 @@ classifyButton.onclick = () => {
     result.innerHTML = prediction.confidence >= 70 ? `<strong>${prediction.label}</strong> · ${prediction.confidence}% confidence` : `Not confident enough (${prediction.confidence}%). Add more varied samples or improve lighting.`;
   } catch (error) { result.textContent = error.message; }
 };
-renderPresets();
-loadModel();
+async function boot() {
+  renderPresets();
+  await loadModel();
+  await loadOpenSourceImageSeeds();
+}
+boot();
