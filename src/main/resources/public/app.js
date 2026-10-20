@@ -18,11 +18,19 @@ const countEl = document.querySelector("#modelCount");
 const notice = document.querySelector("#sampleNotice");
 const datasetNotice = document.querySelector("#datasetNotice");
 const segmentationNotice = document.querySelector("#segmentationNotice");
+const detectorNotice = document.querySelector("#detectorNotice");
 let model = [];
 let imageSegmenter;
 let personMaskCanvas;
 let segmenting = false;
 let previewFrame = 0;
+let ort;
+let detectors = [];
+let detectionResults = [];
+const detectorConfigs = [
+  { id: "produce-yolo", title: "produce detector" },
+  { id: "general-yolo", title: "general-object detector" }
+];
 const focus = { x: .5, y: .5, size: .58 };
 const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
 // Baseline profiles are hand-selected color references, not photos used for training.
@@ -48,6 +56,7 @@ async function requestCamera() {
   resetFocusButton.disabled = false; focusSizeInput.disabled = false;
   updateFocusGuide();
   initializePersonSegmentation();
+  initializeDetectors();
   renderFocusedPreview();
 }
 
@@ -77,12 +86,58 @@ function updateFocusGuide() {
   focusGuide.style.height = `${rect.height}%`;
 }
 
+async function initializeDetectors() {
+  if (detectorNotice.textContent) return;
+  detectorNotice.textContent = "Looking for local ONNX detector models…";
+  try {
+    ort = await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.min.mjs");
+    const loaded = await Promise.all(detectorConfigs.map(async config => {
+      const [modelResponse, labelResponse] = await Promise.all([
+        fetch(`/models/${config.id}.onnx`), fetch(`/models/${config.id}.labels.json`)
+      ]);
+      if (!modelResponse.ok || !labelResponse.ok) return null;
+      const [modelBuffer, labels] = await Promise.all([modelResponse.arrayBuffer(), labelResponse.json()]);
+      const session = await ort.InferenceSession.create(modelBuffer, { executionProviders: ["wasm"] });
+      return { ...config, session, labels };
+    }));
+    detectors = loaded.filter(Boolean);
+    detectorNotice.textContent = detectors.length
+      ? `Local ONNX active: ${detectors.map(detector => detector.title).join(" + ")}.`
+      : "No local ONNX models found. Run the training/export scripts to enable bounding-box detection.";
+  } catch (error) {
+    detectorNotice.textContent = "ONNX Runtime could not load; using the prototype classifier only.";
+    console.warn("ONNX Runtime unavailable", error);
+  }
+}
+
+function drawDetections() {
+  processedCtx.font = "600 15px monospace";
+  processedCtx.textBaseline = "top";
+  detectionResults.forEach(detection => {
+    const color = detection.source === "produce-yolo" ? "#6ee7a5" : "#fb4e78";
+    processedCtx.strokeStyle = color;
+    processedCtx.lineWidth = 3;
+    processedCtx.strokeRect(detection.x, detection.y, detection.width, detection.height);
+    const text = `${detection.label} ${(detection.confidence * 100).toFixed(0)}%`;
+    const textWidth = processedCtx.measureText(text).width + 10;
+    processedCtx.fillStyle = color;
+    processedCtx.fillRect(detection.x, Math.max(0, detection.y - 22), textWidth, 21);
+    processedCtx.fillStyle = "#101817";
+    processedCtx.fillText(text, detection.x + 5, Math.max(1, detection.y - 20));
+  });
+}
+
 function drawFocusedFrame() {
   const width = 640, height = 360;
   processedFrame.width = width; processedFrame.height = height;
   processedCtx.filter = "blur(14px)";
   processedCtx.drawImage(video, 0, 0, width, height);
   processedCtx.filter = "none";
+  if (detectors.length) {
+    processedCtx.drawImage(video, 0, 0, width, height);
+    drawDetections();
+    return;
+  }
   if (personMaskCanvas) {
     foregroundCanvas.width = width; foregroundCanvas.height = height;
     foregroundCtx.clearRect(0, 0, width, height);
@@ -198,6 +253,81 @@ function focusedSnapshot() {
   return processedFrame.toDataURL("image/png");
 }
 
+function detectorInput() {
+  const size = 640;
+  const input = document.createElement("canvas");
+  input.width = size; input.height = size;
+  const inputCtx = input.getContext("2d");
+  const scale = Math.min(size / video.videoWidth, size / video.videoHeight);
+  const drawWidth = video.videoWidth * scale, drawHeight = video.videoHeight * scale;
+  const paddingX = (size - drawWidth) / 2, paddingY = (size - drawHeight) / 2;
+  inputCtx.fillStyle = "#000";
+  inputCtx.fillRect(0, 0, size, size);
+  inputCtx.drawImage(video, paddingX, paddingY, drawWidth, drawHeight);
+  const pixels = inputCtx.getImageData(0, 0, size, size).data;
+  const values = new Float32Array(3 * size * size);
+  for (let pixel = 0; pixel < size * size; pixel++) {
+    values[pixel] = pixels[pixel * 4] / 255;
+    values[size * size + pixel] = pixels[pixel * 4 + 1] / 255;
+    values[2 * size * size + pixel] = pixels[pixel * 4 + 2] / 255;
+  }
+  return { tensor: new ort.Tensor("float32", values, [1, 3, size, size]), scale, paddingX, paddingY, size };
+}
+
+function iou(first, second) {
+  const left = Math.max(first.x, second.x), top = Math.max(first.y, second.y);
+  const right = Math.min(first.x + first.width, second.x + second.width);
+  const bottom = Math.min(first.y + first.height, second.y + second.height);
+  const overlap = Math.max(0, right - left) * Math.max(0, bottom - top);
+  return overlap / (first.width * first.height + second.width * second.height - overlap);
+}
+
+function nonMaximumSuppression(candidates) {
+  const selected = [];
+  candidates.sort((first, second) => second.confidence - first.confidence).forEach(candidate => {
+    if (!selected.some(existing => existing.label === candidate.label && iou(existing, candidate) > .45)) selected.push(candidate);
+  });
+  return selected.slice(0, 20);
+}
+
+function parseYoloOutput(output, detector, transform) {
+  const [batch, attributes, candidates] = output.dims;
+  if (batch !== 1 || attributes < 5) throw new Error(`Unsupported ${detector.title} output shape.`);
+  const raw = [];
+  for (let candidate = 0; candidate < candidates; candidate++) {
+    let labelIndex = 0, confidence = 0;
+    for (let classIndex = 4; classIndex < attributes; classIndex++) {
+      const score = output.data[classIndex * candidates + candidate];
+      if (score > confidence) { confidence = score; labelIndex = classIndex - 4; }
+    }
+    if (confidence < .45 || !detector.labels[labelIndex]) continue;
+    const x = output.data[candidate], y = output.data[candidates + candidate];
+    const width = output.data[2 * candidates + candidate], height = output.data[3 * candidates + candidate];
+    const sourceX = (x - width / 2 - transform.paddingX) / transform.scale;
+    const sourceY = (y - height / 2 - transform.paddingY) / transform.scale;
+    const sourceWidth = width / transform.scale, sourceHeight = height / transform.scale;
+    raw.push({
+      x: sourceX * processedFrame.width / video.videoWidth,
+      y: sourceY * processedFrame.height / video.videoHeight,
+      width: sourceWidth * processedFrame.width / video.videoWidth,
+      height: sourceHeight * processedFrame.height / video.videoHeight,
+      label: detector.labels[labelIndex], confidence, source: detector.id
+    });
+  }
+  return nonMaximumSuppression(raw).filter(box => box.width > 2 && box.height > 2);
+}
+
+async function detectObjects() {
+  if (!detectors.length) return null;
+  const transform = detectorInput();
+  const results = await Promise.all(detectors.map(async detector => {
+    const output = await detector.session.run({ [detector.session.inputNames[0]]: transform.tensor });
+    return parseYoloOutput(output[detector.session.outputNames[0]], detector, transform);
+  }));
+  detectionResults = results.flat();
+  return detectionResults;
+}
+
 function classify(feature) {
   const distances = Object.entries(model).map(([label, samples]) => {
     const closest = Math.min(...samples.map(sample => Math.sqrt(sample.reduce((sum, x, i) => sum + (x - feature[i]) ** 2, 0) / sample.length)));
@@ -304,8 +434,15 @@ document.querySelector("#teachForm").onsubmit = async event => {
     await loadModel();
   } catch (error) { notice.textContent = error.message; }
 };
-classifyButton.onclick = () => {
+classifyButton.onclick = async () => {
   try {
+    const detections = await detectObjects();
+    if (detections) {
+      result.textContent = detections.length
+        ? detections.map(detection => `${detection.label} ${Math.round(detection.confidence * 100)}%`).join(" · ")
+        : "Unknown / unsupported object";
+      return;
+    }
     const prediction = classify(cameraFeature());
     if (!prediction) { result.textContent = "Teach at least one produce label before scanning."; return; }
     result.innerHTML = prediction.confidence >= 70 ? `<strong>${prediction.label}</strong> · ${prediction.confidence}% confidence` : `Not confident enough (${prediction.confidence}%). Add more varied samples or improve lighting.`;

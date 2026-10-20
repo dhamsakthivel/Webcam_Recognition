@@ -67,6 +67,34 @@ color-feature prototype rather than a neural image model; bulk data needs a
 separately trained, evaluated YOLO model (for multiple-product detection) or
 TensorFlow Lite/ONNX classifier before it can improve live recognition.
 
+## Local YOLO detection
+
+Train and export the Universidad de León YOLO dataset after downloading it:
+
+```powershell
+python -m pip install --upgrade ultralytics
+python .\scripts\train-produce-detector.py --epochs 50
+```
+
+This creates `models/produce-yolo.onnx` and
+`models/produce-yolo.labels.json`. Both are intentionally ignored because
+they are generated artifacts. When the local Java server starts, it serves
+these files at `/models/`; the browser executes ONNX inference locally and
+draws one bounding box per detection. A scan with no box at the configured
+45% confidence threshold returns `Unknown / unsupported object`.
+
+For optional general-object testing—including `cell phone`, `bottle`, and
+`person`—export the pretrained COCO model:
+
+```powershell
+python -m pip install --upgrade ultralytics
+python .\scripts\export-general-detector.py
+```
+
+This creates `models/general-yolo.onnx` and its labels. It runs alongside the
+produce detector when present. The ONNX Runtime Web package is loaded when the
+camera starts; inference and model files remain local to the browser/server.
+
 ## Training a label
 
 1. Enter a fruit or vegetable name.

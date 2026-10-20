@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
  */
 public final class FruitVisionServer {
     private static final Path PUBLIC = Path.of("src/main/resources/public").toAbsolutePath();
+    private static final Path MODELS = Path.of("models").toAbsolutePath();
     private static final Path MODEL_FILE = Path.of("data", "produce-samples.tsv");
     private static final Path REFERENCE_IMAGES = Path.of("data", "reference-images");
     private static final List<Sample> samples = new ArrayList<>();
@@ -124,13 +125,17 @@ public final class FruitVisionServer {
     }
 
     private static void serveAsset(HttpExchange exchange, String requestPath) throws IOException {
-        Path asset = PUBLIC.resolve(requestPath.substring(1)).normalize();
-        if (!asset.startsWith(PUBLIC) || !Files.isRegularFile(asset)) {
+        Path root = requestPath.startsWith("/models/") ? MODELS : PUBLIC;
+        String relativePath = requestPath.startsWith("/models/") ? requestPath.substring("/models/".length()) : requestPath.substring(1);
+        Path asset = root.resolve(relativePath).normalize();
+        if (!asset.startsWith(root) || !Files.isRegularFile(asset)) {
             json(exchange, 404, "{\"error\":\"Not found\"}");
             return;
         }
         String type = asset.toString().endsWith(".js") ? "text/javascript; charset=utf-8"
-                : asset.toString().endsWith(".css") ? "text/css; charset=utf-8" : "text/html; charset=utf-8";
+                : asset.toString().endsWith(".css") ? "text/css; charset=utf-8"
+                : asset.toString().endsWith(".json") ? "application/json; charset=utf-8"
+                : asset.toString().endsWith(".onnx") ? "application/octet-stream" : "text/html; charset=utf-8";
         byte[] bytes = Files.readAllBytes(asset);
         exchange.getResponseHeaders().set("Content-Type", type);
         exchange.sendResponseHeaders(200, bytes.length);
