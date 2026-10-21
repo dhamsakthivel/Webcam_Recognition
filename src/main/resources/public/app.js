@@ -12,6 +12,7 @@ const resetFocusButton = document.querySelector("#resetFocus");
 const focusSizeInput = document.querySelector("#focusSize");
 const focusSizeValue = document.querySelector("#focusSizeValue");
 const focusGuide = document.querySelector("#focusGuide");
+const detectorMode = document.querySelector("#detectorMode");
 const result = document.querySelector("#result");
 const labelsEl = document.querySelector("#labels");
 const countEl = document.querySelector("#modelCount");
@@ -27,6 +28,7 @@ let previewFrame = 0;
 let ort;
 let detectors = [];
 let detectionResults = [];
+let scanInProgress = false;
 const detectorConfigs = [
   { id: "produce-yolo", title: "produce detector" },
   { id: "general-yolo", title: "general-object detector" }
@@ -91,6 +93,9 @@ async function initializeDetectors() {
   detectorNotice.textContent = "Looking for local ONNX detector models…";
   try {
     ort = await import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.min.mjs");
+    // Keep WebAssembly inference off the rendering path; one worker avoids UI stalls on low-end CPUs.
+    ort.env.wasm.proxy = true;
+    ort.env.wasm.numThreads = 1;
     const loaded = await Promise.all(detectorConfigs.map(async config => {
       const [modelResponse, labelResponse] = await Promise.all([
         fetch(`/models/${config.id}.onnx`), fetch(`/models/${config.id}.labels.json`)
@@ -101,6 +106,13 @@ async function initializeDetectors() {
       return { ...config, session, labels };
     }));
     detectors = loaded.filter(Boolean);
+    detectorMode.disabled = !detectors.length;
+    [...detectorMode.options].forEach(option => {
+      option.disabled = !detectors.some(detector => detector.id === option.value);
+    });
+    if (detectors.length && !detectors.some(detector => detector.id === detectorMode.value)) {
+      detectorMode.value = detectors[0].id;
+    }
     detectorNotice.textContent = detectors.length
       ? `Local ONNX active: ${detectors.map(detector => detector.title).join(" + ")}.`
       : "No local ONNX models found. Run the training/export scripts to enable bounding-box detection.";
@@ -320,7 +332,8 @@ function parseYoloOutput(output, detector, transform) {
 async function detectObjects() {
   if (!detectors.length) return null;
   const transform = detectorInput();
-  const results = await Promise.all(detectors.map(async detector => {
+  const selectedDetector = detectors.find(detector => detector.id === detectorMode.value) ?? detectors[0];
+  const results = await Promise.all([selectedDetector].map(async detector => {
     const output = await detector.session.run({ [detector.session.inputNames[0]]: transform.tensor });
     return parseYoloOutput(output[detector.session.outputNames[0]], detector, transform);
   }));
@@ -435,7 +448,14 @@ document.querySelector("#teachForm").onsubmit = async event => {
   } catch (error) { notice.textContent = error.message; }
 };
 classifyButton.onclick = async () => {
+  if (scanInProgress) return;
+  scanInProgress = true;
+  const previousLabel = classifyButton.textContent;
+  classifyButton.disabled = true;
+  classifyButton.textContent = "Scanning…";
+  result.textContent = "Scanning selected model…";
   try {
+    await new Promise(requestAnimationFrame);
     const detections = await detectObjects();
     if (detections) {
       result.textContent = detections.length
@@ -446,7 +466,14 @@ classifyButton.onclick = async () => {
     const prediction = classify(cameraFeature());
     if (!prediction) { result.textContent = "Teach at least one produce label before scanning."; return; }
     result.innerHTML = prediction.confidence >= 70 ? `<strong>${prediction.label}</strong> · ${prediction.confidence}% confidence` : `Not confident enough (${prediction.confidence}%). Add more varied samples or improve lighting.`;
-  } catch (error) { result.textContent = error.message; }
+  } catch (error) {
+    console.error("Scan failed", error);
+    result.textContent = `Scan failed: ${error.message}`;
+  } finally {
+    scanInProgress = false;
+    classifyButton.disabled = false;
+    classifyButton.textContent = previousLabel;
+  }
 };
 async function boot() {
   renderPresets();
