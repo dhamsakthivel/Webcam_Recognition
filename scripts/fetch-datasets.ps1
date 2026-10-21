@@ -7,6 +7,7 @@ $Fruits360Directory = Join-Path $DataDirectory "fruits-360-100x100"
 $GroceryStoreDirectory = Join-Path $DataDirectory "GroceryStoreDataset"
 $UnileonDirectory = Join-Path $DataDirectory "unileon-yolo-detection"
 $UnileonArchive = Join-Path $UnileonDirectory "AgricultureDataset.zip"
+$UnileonPartialArchive = "$UnileonArchive.part"
 $UnileonUrl = "https://zenodo.org/api/records/18904638/files/AgricultureDataset.zip/content"
 New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
 
@@ -27,7 +28,18 @@ else {
 if (-not (Test-Path $UnileonArchive)) {
     New-Item -ItemType Directory -Path $UnileonDirectory -Force | Out-Null
     Write-Host "Downloading the Universidad de León YOLO dataset (~1 GB)…"
-    Invoke-WebRequest -Uri $UnileonUrl -OutFile $UnileonArchive
+    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+        & curl.exe --fail --location --retry 3 --continue-at - --output $UnileonPartialArchive $UnileonUrl
+        if ($LASTEXITCODE -ne 0) {
+            throw "Zenodo download failed. Re-run this script to resume the partial download."
+        }
+        Move-Item -Path $UnileonPartialArchive -Destination $UnileonArchive -Force
+    }
+    else {
+        Write-Warning "curl.exe is unavailable; download progress may not be shown."
+        Invoke-WebRequest -Uri $UnileonUrl -OutFile $UnileonPartialArchive
+        Move-Item -Path $UnileonPartialArchive -Destination $UnileonArchive -Force
+    }
 }
 if (-not (Test-Path (Join-Path $UnileonDirectory ".extracted"))) {
     Expand-Archive -Path $UnileonArchive -DestinationPath $UnileonDirectory -Force
