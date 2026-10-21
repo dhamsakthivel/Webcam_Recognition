@@ -33,7 +33,7 @@ const detectorConfigs = [
   { id: "produce-yolo", title: "produce detector" },
   { id: "general-yolo", title: "general-object detector" }
 ];
-const focus = { x: .5, y: .5, size: .58 };
+const focus = { x: .5, y: .5, size: .40 };
 const profile = (...colours) => colours.map(([r, g, b]) => Array.from({ length: 9 }, () => [r, g, b]).flat());
 // Baseline profiles are hand-selected color references, not photos used for training.
 const presets = [
@@ -231,16 +231,18 @@ function updatePersonMask() {
 }
 
 // 3×3 mean RGB cells: simple, transparent and entirely local feature extraction.
-function canvasFeature() {
+function canvasFeature(ignoreTransparent = false) {
   const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const values = [];
   const cellWidth = canvas.width / 3, cellHeight = canvas.height / 3;
   for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
     let r = 0, g = 0, b = 0, n = 0;
     for (let y = Math.floor(row * cellHeight); y < Math.floor((row + 1) * cellHeight); y++) for (let x = Math.floor(col * cellWidth); x < Math.floor((col + 1) * cellWidth); x++) {
-      const i = (y * canvas.width + x) * 4; r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; n++;
+      const i = (y * canvas.width + x) * 4;
+      if (ignoreTransparent && pixels[i + 3] === 0) continue;
+      r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; n++;
     }
-    values.push(r / n, g / n, b / n);
+    values.push(n ? r / n : 0, n ? g / n : 0, n ? b / n : 0);
   }
   return values;
 }
@@ -251,13 +253,13 @@ function cameraFeature() {
   const guide = focusRect();
   // Measure only the guided center region, not the blurred backdrop or holder.
   if (personMaskCanvas) {
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(foregroundCanvas, guide.x, guide.y, guide.width, guide.height, 0, 0, canvas.width, canvas.height);
+    return canvasFeature(true);
   } else {
     ctx.drawImage(processedFrame, guide.x, guide.y, guide.width, guide.height, 0, 0, canvas.width, canvas.height);
+    return canvasFeature();
   }
-  return canvasFeature();
 }
 
 function focusedSnapshot() {
@@ -430,8 +432,8 @@ focusSizeInput.oninput = () => {
   updateFocusGuide();
 };
 resetFocusButton.onclick = () => {
-  focus.x = .5; focus.y = .5; focus.size = .58;
-  focusSizeInput.value = "58"; focusSizeValue.textContent = "58%";
+  focus.x = .5; focus.y = .5; focus.size = .40;
+  focusSizeInput.value = "40"; focusSizeValue.textContent = "40%";
   personMaskCanvas = undefined;
   updateFocusGuide();
   result.textContent = "Focus reset to the center.";
