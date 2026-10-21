@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fruit Vision · local camera classifier</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header class="app-header"><div><p class="eyebrow">PRIVATE EDGE VISION · LOCALHOST</p><h1>Fruit Vision</h1><p>Local produce scanning with a user-controlled target area.</p></div><div class="system-status"><span></span> SYSTEM READY</div></header>
+    <section class="camera-card">
+      <div class="camera-toolbar"><span>LIVE CAMERA</span><span>FOCUS SEGMENTATION</span><span>LOCAL PROCESSING</span></div>
+      <div class="viewport"><video id="camera" autoplay playsinline muted></video><canvas id="processedFrame" hidden></canvas><canvas id="frame" hidden></canvas><div id="focusGuide" hidden><span>SCAN TARGET</span><small>Tap product to move</small></div><div id="cameraState">Camera is off</div></div>
+      <div class="controls"><button id="startCamera">Enable camera</button><button id="classify" disabled>Scan target</button><button id="resetFocus" disabled>Reset focus</button></div>
+      <label class="focus-size" for="detectorMode">Detection model <select id="detectorMode" disabled><option value="produce-yolo">Produce (YOLO)</option><option value="general-yolo">General objects (YOLO)</option></select></label>
+      <label class="focus-size" for="focusSize">Scan area <input id="focusSize" type="range" min="32" max="80" value="40" disabled> <span id="focusSizeValue">40%</span></label>
+      <div id="result" role="status">Add examples, then scan an item.</div>
+      <p id="detectorNotice" class="hint" role="status"></p>
+      <p id="segmentationNotice" class="hint" role="status"></p>
+      <p class="hint">Tap/click the produce to move the guide, then resize it to surround one item. The area outside the guide is blurred locally and focused reference images are saved with your samples.</p>
+    </section>
+    <section>
+      <div class="section-heading"><div><p class="eyebrow">STARTER CATALOG</p><h2>Ready-to-scan examples</h2></div><span>4 baseline labels</span></div>
+      <p class="hint catalog-intro">These openly licensed reference images and baseline color profiles are included immediately. Add your own camera views to improve recognition in your lighting.</p>
+      <p id="datasetNotice" class="hint" role="status">Loading open-source image seed samples…</p>
+      <div id="presets" class="preset-grid"></div>
+    </section>
+    <section class="teach">
+      <div><p class="eyebrow">BUILD YOUR LOCAL MODEL</p><h2>Teach a fruit or vegetable</h2><p>Enter a name and save 8–15 camera views: front, side, slightly closer, and in normal room lighting. Samples remain in <code>data/produce-samples.tsv</code> on this computer.</p></div>
+      <form id="teachForm"><label for="label">Produce name</label><div class="form-row"><input id="label" maxlength="40" placeholder="e.g. red apple" required><button disabled id="addSample">Save camera view</button></div><p id="sampleNotice" class="hint"></p></form>
+    </section>
+    <section><div class="section-heading"><div><p class="eyebrow">CURRENT MODEL</p><h2>Your labels</h2></div><span id="modelCount"></span></div><div id="labels" class="labels"><p class="hint">No labels yet. Teach the model using the camera above.</p></div></section>
+    <aside><strong>Accuracy note:</strong> This lightweight color-and-shape prototype accepts a prediction only at 70% confidence or higher. That is a confidence threshold, not a guaranteed 70% accuracy—real accuracy depends on varied, representative samples and lighting.</aside>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
